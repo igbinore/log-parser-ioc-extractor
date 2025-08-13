@@ -22,7 +22,7 @@
     <div class="col-12 col-lg-6">
       <div class="card shadow-sm">
         <div class="card-body">
-          <h6 class="card-title">Upload Log File (.txt / .log / .csv / .json)</h6>
+          <h6 class="card-title">Upload Log File (.txt / .log / .csv / .json / .eml)</h6>
           <input id="file" class="form-control" type="file" accept=".txt,.log,.csv,.json,.eml">
           <div class="form-text">Tip: try <code>samples/auth.log.txt</code>.</div>
         </div>
@@ -38,12 +38,21 @@
     </div>
   </div>
 
-  <!-- Actions -->
-  <div class="d-flex flex-wrap gap-2 my-3">
-    <button id="parse" class="btn btn-primary">Extract IOCs</button>
-    <button id="exportCsv" class="btn btn-outline-secondary" disabled>Export CSV</button>
-    <button id="exportJson" class="btn btn-outline-secondary" disabled>Export JSON</button>
-    <button id="clear" class="btn btn-light">Clear</button>
+  <!-- Actions / Filters -->
+  <div class="row g-2 my-3 align-items-end">
+    <div class="col-12 col-md-3">
+      <label for="typeFilter" class="form-label">IOC Type</label>
+      <select id="typeFilter" class="form-select">
+        <option value="">All types</option>
+        <!-- dynamically populated -->
+      </select>
+    </div>
+    <div class="col-12 col-md-9 d-flex flex-wrap gap-2">
+      <button id="parse" class="btn btn-primary">Extract IOCs</button>
+      <button id="exportCsv" class="btn btn-outline-secondary" disabled>Export CSV (current view)</button>
+      <button id="exportJson" class="btn btn-outline-secondary" disabled>Export JSON (current view)</button>
+      <button id="clear" class="btn btn-light">Clear</button>
+    </div>
   </div>
 
   <!-- Results -->
@@ -58,7 +67,7 @@
         <table class="table table-sm align-middle">
           <thead class="table-light sticky-top">
             <tr>
-              <th>Type</th><th>Value</th>
+              <th>Type</th><th>Value</th><th class="text-end">Count</th>
             </tr>
           </thead>
           <tbody id="rows"></tbody>
@@ -72,13 +81,31 @@
 
 <script>
 const API = "http://127.0.0.1:8001";
-let currentItems = [];
+let allItems = [];        // full set from server [{type,value,count}]
+let currentItems = [];    // filtered view
+let lastByType = {};      // {type: totalCount}
+
+function populateTypeFilter(byType) {
+  const sel = document.getElementById("typeFilter");
+  sel.innerHTML = '<option value="">All types</option>' +
+    Object.keys(byType || {}).sort().map(t => `<option value="${t}">${t} (${byType[t]})</option>`).join("");
+}
+
+function applyTypeFilter() {
+  const sel = document.getElementById("typeFilter").value;
+  currentItems = sel ? allItems.filter(x => x.type === sel) : allItems.slice();
+  renderRows(currentItems);
+  document.getElementById("exportCsv").disabled = currentItems.length === 0;
+  document.getElementById("exportJson").disabled = currentItems.length === 0;
+}
 
 function renderRows(items){
   const tbody = document.getElementById("rows");
   const empty = document.getElementById("empty");
   const count = document.getElementById("count");
-  count.textContent = items.length;
+
+  const total = items.reduce((acc, r) => acc + (r.count || 0), 0);
+  count.textContent = total;
 
   if (!items.length){
     empty.style.display = "block";
@@ -90,6 +117,7 @@ function renderRows(items){
     <tr>
       <td><span class="badge bg-secondary">${r.type}</span></td>
       <td><code>${r.value}</code></td>
+      <td class="text-end"><span class="badge bg-dark">${r.count ?? 1}</span></td>
     </tr>
   `).join("");
 }
@@ -107,13 +135,15 @@ async function extractIOCs(){
     return;
   }
   const j = await res.json();
-  currentItems = j.items || [];
-  renderRows(currentItems);
-  document.getElementById("exportCsv").disabled = currentItems.length === 0;
-  document.getElementById("exportJson").disabled = currentItems.length === 0;
+  allItems = j.items || [];
+  lastByType = j.by_type || {};
+  populateTypeFilter(lastByType);
+  document.getElementById("typeFilter").value = "";
+  applyTypeFilter(); // sets currentItems & renders
 }
 
 async function exportFile(fmt){
+  // Export the current view (filtered)
   const fd = new FormData();
   fd.append("format", fmt);
   fd.append("items", JSON.stringify(currentItems));
@@ -129,7 +159,10 @@ async function exportFile(fmt){
 function clearAll(){
   document.getElementById("file").value = "";
   document.getElementById("text").value = "";
+  document.getElementById("typeFilter").innerHTML = '<option value="">All types</option>';
+  allItems = [];
   currentItems = [];
+  lastByType = {};
   renderRows(currentItems);
   document.getElementById("exportCsv").disabled = true;
   document.getElementById("exportJson").disabled = true;
@@ -139,6 +172,7 @@ document.getElementById("parse").addEventListener("click", extractIOCs);
 document.getElementById("exportCsv").addEventListener("click", () => exportFile("csv"));
 document.getElementById("exportJson").addEventListener("click", () => exportFile("json"));
 document.getElementById("clear").addEventListener("click", clearAll);
+document.getElementById("typeFilter").addEventListener("change", applyTypeFilter);
 </script>
 </body>
 </html>
