@@ -38,13 +38,13 @@ Upload a file (or paste text), extract indicators (IPs, domains, URLs, hashes, e
 
 \*\*Full IOC Extraction View\*\*  
 
-!\[Full IOC Extraction](screenshots/full\_ioc\_view.png)
+!\[Full IOC Extraction View](./screenshots/full\_ioc\_view.png)
 
 
 
 \*\*Filtered by IOC Type (IPs only)\*\*  
 
-!\[Filtered View - IPs](screenshots/filtered\_ips\_view.png)
+!\[Filtered IP Addresses View](./screenshots/filtered\_ips\_view.png)
 
 
 
