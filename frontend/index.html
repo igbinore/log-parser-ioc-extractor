@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Log Parser & IOC Extractor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { padding: 20px; }
+    .card { border-radius: 16px; }
+    .table-wrap { max-height: 420px; overflow:auto; }
+    code { user-select: all; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1 class="mb-1">Log Parser & IOC Extractor</h1>
+  <p class="text-muted">Backend: <code>http://127.0.0.1:8001</code></p>
+
+  <!-- Inputs -->
+  <div class="row g-3">
+    <div class="col-12 col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h6 class="card-title">Upload Log File (.txt / .log / .csv / .json)</h6>
+          <input id="file" class="form-control" type="file" accept=".txt,.log,.csv,.json,.eml">
+          <div class="form-text">Tip: try <code>samples/auth.log.txt</code>.</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h6 class="card-title">Or Paste Raw Log Text</h6>
+          <textarea id="text" class="form-control" rows="8" placeholder="Paste log lines..."></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="d-flex flex-wrap gap-2 my-3">
+    <button id="parse" class="btn btn-primary">Extract IOCs</button>
+    <button id="exportCsv" class="btn btn-outline-secondary" disabled>Export CSV</button>
+    <button id="exportJson" class="btn btn-outline-secondary" disabled>Export JSON</button>
+    <button id="clear" class="btn btn-light">Clear</button>
+  </div>
+
+  <!-- Results -->
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center">
+        <h6 class="card-title mb-0">Results</h6>
+        <span id="count" class="badge bg-dark">0</span>
+      </div>
+
+      <div class="table-wrap mt-2">
+        <table class="table table-sm align-middle">
+          <thead class="table-light sticky-top">
+            <tr>
+              <th>Type</th><th>Value</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+
+      <div id="empty" class="text-muted small">No results yet. Upload a file or paste text, then click <b>Extract IOCs</b>.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = "http://127.0.0.1:8001";
+let currentItems = [];
+
+function renderRows(items){
+  const tbody = document.getElementById("rows");
+  const empty = document.getElementById("empty");
+  const count = document.getElementById("count");
+  count.textContent = items.length;
+
+  if (!items.length){
+    empty.style.display = "block";
+    tbody.innerHTML = "";
+    return;
+  }
+  empty.style.display = "none";
+  tbody.innerHTML = items.map(r => `
+    <tr>
+      <td><span class="badge bg-secondary">${r.type}</span></td>
+      <td><code>${r.value}</code></td>
+    </tr>
+  `).join("");
+}
+
+async function extractIOCs(){
+  const fd = new FormData();
+  const f = document.getElementById("file").files[0];
+  const t = document.getElementById("text").value;
+  if (f) fd.append("file", f);
+  if (t) fd.append("text", t);
+
+  const res = await fetch(`${API}/extract`, { method: "POST", body: fd });
+  if (!res.ok){
+    alert("Extraction failed. Is the backend on 8001?");
+    return;
+  }
+  const j = await res.json();
+  currentItems = j.items || [];
+  renderRows(currentItems);
+  document.getElementById("exportCsv").disabled = currentItems.length === 0;
+  document.getElementById("exportJson").disabled = currentItems.length === 0;
+}
+
+async function exportFile(fmt){
+  const fd = new FormData();
+  fd.append("format", fmt);
+  fd.append("items", JSON.stringify(currentItems));
+  const res = await fetch(`${API}/export`, { method: "POST", body: fd });
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = fmt === "csv" ? "iocs.csv" : "iocs.json";
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function clearAll(){
+  document.getElementById("file").value = "";
+  document.getElementById("text").value = "";
+  currentItems = [];
+  renderRows(currentItems);
+  document.getElementById("exportCsv").disabled = true;
+  document.getElementById("exportJson").disabled = true;
+}
+
+document.getElementById("parse").addEventListener("click", extractIOCs);
+document.getElementById("exportCsv").addEventListener("click", () => exportFile("csv"));
+document.getElementById("exportJson").addEventListener("click", () => exportFile("json"));
+document.getElementById("clear").addEventListener("click", clearAll);
+</script>
+</body>
+</html>
